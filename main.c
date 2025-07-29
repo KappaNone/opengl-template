@@ -57,11 +57,12 @@ int main() {
     glCompileShader(vertex_shader);
 
     GLint shader_compile_status;
+    char error_buf[512];
+
     glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &shader_compile_status);
     if (shader_compile_status != GL_TRUE) {
-        char error_buf[512];
-        printf("VERTEX SHADER COMPILATION ERROR: \n");
         glGetShaderInfoLog(vertex_shader, 512, 0, error_buf);
+        printf("VERTEX SHADER COMPILATION ERROR: \n");
         printf("%s\n", error_buf);
     }
 
@@ -71,9 +72,8 @@ int main() {
 
     glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &shader_compile_status);
     if (shader_compile_status != GL_TRUE) {
-        char error_buf[512];
-        printf("FRAGMENT SHADER COMPILATION ERROR: \n");
         glGetShaderInfoLog(fragment_shader, 512, 0, error_buf);
+        printf("FRAGMENT SHADER COMPILATION ERROR: \n");
         printf("%s\n", error_buf);
     }
 
