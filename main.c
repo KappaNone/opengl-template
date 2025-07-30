@@ -1,22 +1,97 @@
 #include <stdio.h>
+#include <assert.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <errno.h>
+#include <string.h>
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-const char *vertex_shader_src = 
-"#version 150 core\n"
-"in vec2 pos;\n"
-"void main()\n"
-"{\n"
-"gl_Position = vec4(pos, 0.0, 1.0);\n"
-"};\n";
+char *file_into_malloced_cstr(const char *file_path) {
+    FILE *file = NULL;
+    char *buffer = NULL;
 
-const char *fragment_shader_src = 
-"#version 150 core\n"
-"out vec4 color;\n"
-"void main()\n"
-"{\n"
-"color = vec4(1.0, 1.0, 1.0, 1.0);\n"
-"}\n";
+    file = fopen(file_path, "r"); 
+    if (file == NULL) goto fail;
+    if (fseek(file, 0, SEEK_END) < 0) goto fail;
+
+    long size = ftell(file);
+    if (size < 0) goto fail;
+
+    buffer = malloc(size + 1);
+    if (buffer == NULL) goto fail;
+
+    if (fseek(file, 0, SEEK_SET) < 0) goto fail;
+
+    fread(buffer, 1, size, file);
+    if (ferror(file)) goto fail;
+    
+    if (file) {
+        fclose(file);
+        errno = 0;
+    }
+    return buffer;
+fail:
+    if (file) {
+        int saved_errno = errno;
+        fclose(file);
+        errno = saved_errno;
+    }
+    if (buffer) {
+        free(buffer);
+    }
+    return NULL;
+}
+
+const char *shader_type_as_cstr(GLuint shader) {
+    switch (shader) {
+        case (GL_FRAGMENT_SHADER):
+            return "GL_FRAGMENT_SHADER";
+        case (GL_VERTEX_SHADER):
+            return "GL_VERTEX_SHADER";
+        default:
+            return "(Undefined)";
+    }
+}
+
+bool compile_shader_source(const GLchar *source, GLenum shader_type, GLuint *shader) {
+    *shader = glCreateShader(shader_type);
+    glShaderSource(*shader, 1, &source, NULL);
+    glCompileShader(*shader);
+
+    GLint compiled = 0;
+    glGetShaderiv(*shader, GL_COMPILE_STATUS, &compiled);
+
+    if (!compiled) {
+        GLchar message[1024];
+        GLsizei message_size;
+        glGetShaderInfoLog(*shader, sizeof(message), &message_size, message);
+        fprintf(stderr, "ERROR: could not compile %s\n", shader_type_as_cstr(shader_type));
+        fprintf(stderr, "%.*s\n", message_size, message);
+        return false;
+    }
+
+    return true;
+}
+
+bool compile_shader_file(const char *file_path, GLenum shader_type, GLuint *shader) {
+    char *source = file_into_malloced_cstr(file_path);
+    if (source == NULL) {
+        fprintf(stderr, "ERROR: failed to read file `%s` : `%s`\n", file_path, strerror(errno));
+        errno = 0;
+        return false;
+    }
+
+    bool ok = compile_shader_source(source, shader_type, shader);
+    if (!ok) {
+        fprintf(stderr, "ERROR: failed to compile `%s` shader file\n", file_path);
+    }
+    free(source);
+
+    return true;
+}
+
 
 int main() {
     glfwInit();
@@ -52,30 +127,13 @@ int main() {
     glBindVertexArray(vao);
 
     // Compiling shaders
-    GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertex_shader, 1, &vertex_shader_src, 0); 
-    glCompileShader(vertex_shader);
+    GLuint vertex_shader = 0;
 
-    GLint shader_compile_status;
-    char error_buf[512];
+    compile_shader_file("shaders/shader.vert", GL_VERTEX_SHADER, &vertex_shader);
 
-    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &shader_compile_status);
-    if (shader_compile_status != GL_TRUE) {
-        glGetShaderInfoLog(vertex_shader, 512, 0, error_buf);
-        printf("VERTEX SHADER COMPILATION ERROR: \n");
-        printf("%s\n", error_buf);
-    }
+    GLuint fragment_shader = 0;
 
-    GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragment_shader, 1, &fragment_shader_src, 0); 
-    glCompileShader(fragment_shader);
-
-    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &shader_compile_status);
-    if (shader_compile_status != GL_TRUE) {
-        glGetShaderInfoLog(fragment_shader, 512, 0, error_buf);
-        printf("FRAGMENT SHADER COMPILATION ERROR: \n");
-        printf("%s\n", error_buf);
-    }
+    compile_shader_file("shaders/shader.frag", GL_FRAGMENT_SHADER, &fragment_shader);
 
     // Combining shaders into a program 
     GLuint shader_program = glCreateProgram();
