@@ -26,12 +26,16 @@ char *file_into_malloced_cstr(const char *file_path) {
 
     fread(buffer, 1, size, file);
     if (ferror(file)) goto fail;
+
+    buffer[size] = '\0';
     
     if (file) {
         fclose(file);
         errno = 0;
     }
+
     return buffer;
+
 fail:
     if (file) {
         int saved_errno = errno;
@@ -55,7 +59,7 @@ const char *shader_type_as_cstr(GLuint shader) {
     }
 }
 
-bool compile_shader_source(const GLchar *source, GLenum shader_type, GLuint *shader) {
+bool compile_shader_source(const GLchar *source, GLuint *shader, GLenum shader_type) {
     *shader = glCreateShader(shader_type);
     glShaderSource(*shader, 1, &source, NULL);
     glCompileShader(*shader);
@@ -75,7 +79,7 @@ bool compile_shader_source(const GLchar *source, GLenum shader_type, GLuint *sha
     return true;
 }
 
-bool compile_shader_file(const char *file_path, GLenum shader_type, GLuint *shader) {
+bool compile_shader_file(const char *file_path, GLuint *shader, GLenum shader_type) {
     char *source = file_into_malloced_cstr(file_path);
     if (source == NULL) {
         fprintf(stderr, "ERROR: failed to read file `%s` : `%s`\n", file_path, strerror(errno));
@@ -83,15 +87,39 @@ bool compile_shader_file(const char *file_path, GLenum shader_type, GLuint *shad
         return false;
     }
 
-    bool ok = compile_shader_source(source, shader_type, shader);
+    bool ok = compile_shader_source(source, shader, shader_type);
     if (!ok) {
         fprintf(stderr, "ERROR: failed to compile `%s` shader file\n", file_path);
     }
-    free(source);
 
+    free(source);
     return true;
 }
 
+bool link_program(GLuint vert_shader, GLuint frag_shader, GLuint *program) {
+    *program = glCreateProgram(); 
+
+    glAttachShader(*program, vert_shader);
+    glAttachShader(*program, frag_shader);
+    glLinkProgram(*program);
+    
+    GLint linked = 0;
+    glGetProgramiv(*program, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        GLsizei message_size = 0;
+        GLchar message[1024];
+
+        glGetProgramInfoLog(*program, sizeof(message), &message_size, message);
+        fprintf(stderr, "Program linking: %.*s\n", message_size, message);
+    }
+
+    glDeleteShader(vert_shader); 
+    glDeleteShader(frag_shader); 
+
+    return program;
+};
+
+double time = 0;
 
 int main() {
     glfwInit();
@@ -110,9 +138,10 @@ int main() {
     glewInit();
 
     float vertices[] = {
-        0.0f, 0.5f,
-        0.5f, -0.5f,
-        -0.5f, -0.5f,
+        -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, // top-left
+        0.5f, 0.5f, 0.0f, 1.0f, 0.0f, // top_right
+        0.5f, -0.5f, 0.0f, 0.0f, 1.0f, // bottom-right
+        -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, // bottom-left
     };
 
     // Creating vbo (vertex buffer object) for storing vertex data
@@ -127,32 +156,48 @@ int main() {
     glBindVertexArray(vao);
 
     // Compiling shaders
-    GLuint vertex_shader = 0;
+    GLuint vert_shader = 0;
 
-    compile_shader_file("shaders/shader.vert", GL_VERTEX_SHADER, &vertex_shader);
+    compile_shader_file("shaders/shader.vert", &vert_shader, GL_VERTEX_SHADER);
 
-    GLuint fragment_shader = 0;
+    GLuint frag_shader = 0;
 
-    compile_shader_file("shaders/shader.frag", GL_FRAGMENT_SHADER, &fragment_shader);
+    compile_shader_file("shaders/blink.frag", &frag_shader, GL_FRAGMENT_SHADER);
 
-    // Combining shaders into a program 
-    GLuint shader_program = glCreateProgram();
-    glAttachShader(shader_program, vertex_shader);
-    glAttachShader(shader_program, fragment_shader);
-    glLinkProgram(shader_program);
-    glUseProgram(shader_program);
+    // Linking shaders into a program 
+    GLuint program;
+
+    link_program(vert_shader, frag_shader, &program);
+
+    glUseProgram(program);
 
     // Making the link between vertex data and attributes
-    GLint pos_attrib = glGetAttribLocation(shader_program, "pos");
-    glVertexAttribPointer(pos_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
+    GLint pos_attrib = glGetAttribLocation(program, "pos");
+    glVertexAttribPointer(pos_attrib, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
     glEnableVertexAttribArray(pos_attrib);
 
+    GLint color_attrib = glGetAttribLocation(program, "color");
+    glVertexAttribPointer(color_attrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(color_attrib);
+    
+    // Uniforms
+    GLint uni_time = glGetUniformLocation(program, "time");
+
     // Main loop
+    time = glfwGetTime();
+    double prev_time = 0.0f;
+    double delta_time = 0.0f;
     while (!glfwWindowShouldClose(window)) {
         glfwSwapBuffers(window);
         glfwPollEvents();
+        glDrawArrays(GL_TRIANGLES, 0, 4);
 
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glUniform1f(uni_time, time);
+
+        double cur_time = glfwGetTime();
+        delta_time = cur_time - prev_time;
+        time += delta_time;
+        prev_time = cur_time;
     }
 
     glfwTerminate();
