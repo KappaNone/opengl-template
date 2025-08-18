@@ -6,7 +6,7 @@ in vec3 Color;
 
 out vec4 out_color;
 
-const int blink_speed = 4;
+const int blink_speed = 8;
 
 void main()
 {

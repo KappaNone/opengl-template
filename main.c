@@ -8,6 +8,9 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#define WINDOW_WIDTH 1920
+#define WINDOW_HEIGHT 1080
+
 char *file_into_malloced_cstr(const char *file_path) {
     FILE *file = NULL;
     char *buffer = NULL;
@@ -131,17 +134,22 @@ int main() {
 
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
-    GLFWwindow *window = glfwCreateWindow(800, 600, "Hello from OpenGL!", 0, 0);
+    GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hello from OpenGL!", 0, 0);
     glfwMakeContextCurrent(window);
 
     glewExperimental = GL_TRUE;
     glewInit();
 
     float vertices[] = {
-        -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, // top-left
-        0.5f, 0.5f, 0.0f, 1.0f, 0.0f, // top_right
-        0.5f, -0.5f, 0.0f, 0.0f, 1.0f, // bottom-right
-        -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, // bottom-left
+        -1.0f, 1.0f, 1.0f, 0.0f, 0.0f, // top-left
+        1.0f, 1.0f, 0.0f, 0.0f, 0.0f, // top_right
+        1.0f, -1.0f, 0.0f, 0.0f, 1.0f, // bottom-right
+        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, // bottom-left
+    };
+
+    GLuint elements[] = {
+        0, 1, 2,
+        2, 3, 0,
     };
 
     // Creating vbo (vertex buffer object) for storing vertex data
@@ -154,6 +162,12 @@ int main() {
     GLuint vao;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
+
+    // Creating ebo (elements buffer object) to reuse vertices using elements[]
+    GLuint ebo;
+    glGenBuffers(1, &ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
 
     // Compiling shaders
     GLuint vert_shader = 0;
@@ -190,7 +204,8 @@ int main() {
     while (!glfwWindowShouldClose(window)) {
         glfwSwapBuffers(window);
         glfwPollEvents();
-        glDrawArrays(GL_TRIANGLES, 0, 4);
+
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glUniform1f(uni_time, time);
 
